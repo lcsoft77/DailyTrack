@@ -1,0 +1,110 @@
+﻿@page "/"
+@rendermode InteractiveWebAssembly
+
+@implements IDisposable
+
+@using DailyTrack.Common.Interface
+@using System.Linq
+@using DailyTrack.Common.ViewModel
+@using System.Diagnostics
+
+@inject IActivityWebService _activityService;
+@inject NavigationManager Navigation
+
+<FluentGrid Spacing="3" Justify="JustifyContent.FlexStart">
+    <FluentGridItem xs="12">
+        <h3>Today's activities</h3>
+
+        <div>
+            <FluentButton IconStart="@(new Icons.Regular.Size16.New())" Appearance="Appearance.Accent" @onclick="CreateNewActivity">New activity</FluentButton>
+        </div>
+
+        @if (activities != null && activities.Any())
+        {
+            <FluentDataGrid Items="@activities" GridTemplateColumns="2fr 1fr 1fr 1fr 1fr" TGridItem="ActivityViewModel">
+                <PropertyColumn Title="Name" Property="@(c => c!.Name)" Align="Align.Start" />
+                <PropertyColumn Title="State" Property="@(c => c!.Status.ToFriendlyString())" Align="Align.Start" />
+                <PropertyColumn Title="Duration" Property="@(c => c!.DurationString)" Align="Align.Start" />
+                <PropertyColumn Title="Type" Property="@(c => c!.Type.ToFriendlyString())" Align="Align.Start" />
+                <TemplateColumn Title="" Align="@Align.End">
+                    <FluentButton IconEnd="@(new Icons.Regular.Size16.Edit())" OnClick="@(() => EditTask(context))" />
+                    <FluentButton IconEnd="@(new Icons.Regular.Size16.Play())" OnClick="@(() => StartTask(context))" />
+                    <FluentButton IconEnd="@(new Icons.Regular.Size16.Stop())" OnClick="@(() => StopTask(context))" />
+                    <FluentButton IconEnd="@(new Icons.Regular.Size16.Delete())" OnClick="@(() => DeleteTask(context))" />
+                </TemplateColumn>
+            </FluentDataGrid>
+        }
+        else
+        {
+            <p></p>
+            <p>No activities found.</p>
+        }
+
+    </FluentGridItem>
+</FluentGrid>
+@code {
+    private IQueryable<ActivityViewModel> activities;
+    private System.Timers.Timer timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadActivities();
+
+        timer = new System.Timers.Timer(1000); // Intervallo in millisecondi
+        timer.Elapsed += (sender, e) => UpdateValue();
+        timer.Start();
+    }
+
+    public void Dispose()
+    {
+        timer.Stop();
+        timer.Dispose();
+    }
+
+    private void UpdateValue()
+    {
+        InvokeAsync(() =>
+        {
+            StateHasChanged();
+        });
+    }
+
+
+    private async Task LoadActivities()
+    {
+        activities = (await _activityService.GetActivitiesForDate(DateTime.Now, DateTime.Now)).AsQueryable();
+    }
+
+    private void CreateNewActivity()
+    {
+        Navigation.NavigateTo("/edittask/");
+    }
+
+    private void EditTask(ActivityViewModel task)
+    {
+        Navigation.NavigateTo("/edittask/" + task.id);
+    }
+
+    private async Task StartTask(ActivityViewModel task)
+    {
+        await _activityService.StartActivity(Guid.Parse(task.id));
+        await LoadActivities();
+    }
+
+    private async Task StopTask(ActivityViewModel task)
+    {
+        await _activityService.StopActivity(Guid.Parse(task.id));
+        await LoadActivities();
+    }
+
+    private async Task DeleteTask(ActivityViewModel task)
+    {
+        /*var result = await MatDialogService.ConfirmAsync("Vuoi cancellare il task?");
+        if (result)
+        {
+            await _activityService.DeleteActivity(Guid.Parse(task.id));
+            await LoadActivities();
+
+        }*/
+    }
+}

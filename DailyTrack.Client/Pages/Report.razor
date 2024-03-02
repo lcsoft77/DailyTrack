@@ -1,0 +1,169 @@
+﻿@page "/report"
+@rendermode InteractiveWebAssembly
+
+@using ChartJs.Blazor.Common
+@using DailyTrack.Common.Interface
+@using System.Linq
+@using DailyTrack.Common.ViewModel
+@using System.Diagnostics
+@using ChartJs.Blazor
+@using ChartJs.Blazor.PieChart
+
+@inject IActivityWebService _activityService;
+
+<FluentGrid Spacing="3" Justify="JustifyContent.FlexStart">
+    <FluentGridItem xs="12">
+        <h3>Report activities</h3>
+
+        <div class="mb-3">
+            <FluentDatePicker Label="Start date" @bind-Value="startDate" />
+            <FluentDatePicker Label="End date" @bind-Value="endDate" />
+        </div>
+
+        <p></p>
+        <div>
+            <FluentButton IconStart="@(new Icons.Regular.Size16.ArrowCircleRight())" Appearance="Appearance.Accent" @onclick="GenerateReport">Query</FluentButton>
+        </div>
+
+        @if (showProgress)
+        {
+            <FluentStack Orientation="Orientation.Vertical"
+                         HorizontalAlignment="HorizontalAlignment.Center" VerticalAlignment="VerticalAlignment.Center">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.Center" VerticalAlignment="VerticalAlignment.Center">
+                    <FluentProgressRing></FluentProgressRing>
+                </FluentStack>
+            </FluentStack>
+        }
+        else
+        {
+            @if (activities != null && activities.Any())
+            {
+                <FluentTabs>
+                    <FluentTab Label="Report">
+                        <FluentDataGrid Items="@activities" GridTemplateColumns="1fr 1fr 1fr 2fr" TGridItem="ActivityViewModel">
+                            <PropertyColumn Title="Name" Property="@(c => c!.Name)" Align="Align.Start" />
+                            <PropertyColumn Title="Type" Property="@(c => c!.Type.ToFriendlyString())" Align="Align.Center" />
+                            <PropertyColumn Title="Start time" Property="@(c => c!.StartedAtString)" Align="Align.Center" />
+                            <PropertyColumn Title="Duration" Property="@(c => c!.DurationString)" Align="Align.End" />
+                        </FluentDataGrid>
+                    </FluentTab>
+                    <FluentTab Label="Chart">
+                        @if (activities != null && activities.Any())
+                        {
+                            <Chart @ref="chart" Config="chartData" />
+                        }
+                        else
+                        {
+                            <p>No activities available.</p>
+                        }
+                    </FluentTab>
+
+                </FluentTabs>
+
+            }
+            else
+            {
+                <p>No activities found for parameters selected.</p>
+            }
+        }
+
+    </FluentGridItem>
+
+</FluentGrid>
+
+@code {
+    HorizontalAlignment Horizontal;
+    VerticalAlignment Vertical;
+
+
+    private DateTime? startDate = DateTime.Today.AddDays(-1);
+    private DateTime? endDate = DateTime.Today;
+    private IQueryable<ActivityViewModel>? activities;
+
+    private PieConfig chartData;
+    private Chart chart;
+
+    private bool showProgress { get; set; } = false;
+
+    private readonly Random random = new Random();
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+
+        if (firstRender)
+        {
+            await GenerateReport();
+        }
+    }
+
+    private async Task GenerateChart()
+    {
+        Console.WriteLine("Generating chart");
+        if (activities == null || !activities.Any())
+        {
+            return;
+        }
+
+        var activityTypes = activities.Select(t => t.Type).Distinct().ToList();
+        var counts = activityTypes.Select(type => activities.Count(t => t.Type == type)).ToList();
+
+        chartData = new PieConfig
+            {
+                Options = new PieOptions
+                {
+                    Responsive = true,
+                    Title = new OptionsTitle
+                    {
+                        Display = false
+                    }
+                }
+            };
+
+        foreach (var color in activityTypes)
+        {
+            chartData.Data.Labels.Add(color.ToFriendlyString());
+        }
+
+        var dataset = new PieDataset<int>(counts)
+            {
+                BackgroundColor = GenerateRandomColors(counts.Count)
+            };
+
+        chartData.Data.Datasets.Add(dataset);
+    }
+
+    private IndexableOption<string> GenerateRandomColors(int n)
+    {
+        var colors = new List<string>();
+
+        for (int i = 0; i < n; i++)
+        {
+            var color = "#" + random.Next(0x1000000).ToString("X6");
+            colors.Add(color);
+        }
+
+        return new IndexableOption<string>(colors.ToArray());
+    }
+
+    private async Task GenerateReport()
+    {
+        showProgress = true;
+        StateHasChanged();
+        try
+        {
+            activities = (await _activityService.GetActivitiesForDate(startDate.GetValueOrDefault().ToLocalTime(), endDate.GetValueOrDefault().ToLocalTime())).AsQueryable();
+            if (activities != null && activities.Any())
+            {
+                await GenerateChart();
+            }
+        }
+        finally
+        {
+            showProgress = false;
+        }
+
+        StateHasChanged();
+    }
+}
